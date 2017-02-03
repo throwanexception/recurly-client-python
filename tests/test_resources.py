@@ -2,6 +2,7 @@ import collections
 import logging
 import time
 from xml.etree import ElementTree
+from datetime import datetime
 
 import six
 import recurly
@@ -10,7 +11,7 @@ from six import StringIO
 from six.moves import urllib, http_client
 from six.moves.urllib.parse import urljoin
 
-from recurly import Account, AddOn, Address, Adjustment, BillingInfo, Coupon, Plan, Redemption, Subscription, SubscriptionAddOn, Transaction, MeasuredUnit, Usage, GiftCard, Delivery, ShippingAddress
+from recurly import Account, AddOn, Address, Adjustment, BillingInfo, Coupon, Plan, Redemption, Subscription, SubscriptionAddOn, Transaction, MeasuredUnit, Usage, GiftCard, Delivery, ShippingAddress, AccountAcquisition
 from recurly import Money, NotFoundError, ValidationError, BadRequestError, PageError
 from recurlytests import RecurlyTest, xml
 
@@ -191,6 +192,54 @@ class TestResources(RecurlyTest):
             account = Account.get(account_code)
             self.assertTrue(account.tax_exempt)
 
+    def test_account_acquisition(self):
+        account_code = 'test%s' % self.test_id
+
+        """Create an account with an account acquisition"""
+        account = Account(account_code=account_code)
+        acquisition = AccountAcquisition()
+        acquisition.cost_in_cents = 199
+        acquisition.currency = 'USD'
+        acquisition.channel = 'blog'
+        acquisition.subchannel = 'Whitepaper Blog Post'
+        acquisition.campaign = 'mailchimp67a904de95.0914d8f4b4'
+        account.account_acquisition = acquisition
+
+        with self.mock_request('account/created-with-account-acquisition.xml'):
+            account.save()
+
+        """Get the acquisition from the account"""
+        with self.mock_request('account-acquisition/exists.xml'):
+            acquisition = account.account_acquisition()
+
+        self.assertEquals(acquisition.cost_in_cents, 199)
+        self.assertEquals(acquisition.currency, 'USD')
+        self.assertEquals(acquisition.channel, 'blog')
+        self.assertEquals(acquisition.subchannel, 'Whitepaper Blog Post')
+        self.assertEquals(acquisition.campaign, 'mailchimp67a904de95.0914d8f4b4')
+        self.assertIsInstance(acquisition.created_at, datetime)
+        self.assertIsInstance(acquisition.updated_at, datetime)
+
+        """Update the acquisition"""
+        acquisition.cost_in_cents = 200
+        acquisition.currency = 'EUR'
+        acquisition.channel = 'social_media'
+        acquisition.subchannel = 'Facebook Post'
+        acquisition.campaign = 'hubspot123456'
+
+        with self.mock_request('account-acquisition/updated.xml'):
+            acquisition.save()
+
+        self.assertEquals(acquisition.cost_in_cents, 200)
+        self.assertEquals(acquisition.currency, 'EUR')
+        self.assertEquals(acquisition.channel, 'social_media')
+        self.assertEquals(acquisition.subchannel, 'Facebook Post')
+        self.assertEquals(acquisition.campaign, 'hubspot123456')
+        self.assertIsInstance(acquisition.created_at, datetime)
+        self.assertIsInstance(acquisition.updated_at, datetime)
+
+        with self.mock_request('account-acquisition/deleted.xml'):
+            acquisition.delete()
 
     def test_add_on(self):
         plan_code = 'plan%s' % self.test_id
@@ -1018,13 +1067,11 @@ class TestResources(RecurlyTest):
             self.assertEqual(measured_unit.id, 123456)
 
     def test_usage(self):
-        import datetime
-
         usage = Usage()
         usage.amount = 100 # record 100 emails
         usage.merchant_tag = "Recording 100 emails used by customer"
-        usage.recording_timestamp = datetime.datetime(2016, 12, 12, 12, 0, 0, 0)
-        usage.usage_timestamp = datetime.datetime(2016, 12, 12, 12, 0, 0, 0)
+        usage.recording_timestamp = datetime(2016, 12, 12, 12, 0, 0, 0)
+        usage.usage_timestamp = datetime(2016, 12, 12, 12, 0, 0, 0)
 
         with self.mock_request('subscription/show.xml'):
             sub = Subscription.get('123456789012345678901234567890ab')
