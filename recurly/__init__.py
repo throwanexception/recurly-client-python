@@ -2,6 +2,7 @@ from recurly import recurly_logging as logging
 import sys
 import re
 from datetime import datetime
+import six
 from six.moves.urllib.parse import urljoin
 from six import iteritems
 from defusedxml import ElementTree
@@ -811,26 +812,40 @@ class Invoice(Resource):
         pdf_response = cls.http_request(url, headers={'Accept': 'application/pdf'})
         return pdf_response.read()
 
-    def refund_amount(self, amount_in_cents, refund_method = 'credit_first'):
-        amount_element = self.refund_open_amount_xml(amount_in_cents,
-                                                     refund_method)
+    def refund_amount(self, amount_in_cents, refund_options = {}):
+        # For backwards compatibility
+        if (isinstance(refund_options, six.string_types)):
+            refund_options = { 'refund_method': refund_options }
+        else:
+            if 'refund_method' not in refund_options:
+                refund_options = { 'refund_method': 'credit_first' }
+
+        amount_element = self._refund_open_amount_xml(amount_in_cents,
+                                                     refund_options)
         return self._create_refund_invoice(amount_element)
 
-    def refund(self, adjustments, refund_method = 'credit_first'):
-        adjustments_element = self.refund_line_items_xml(adjustments,
-                                                         refund_method)
+    def refund(self, adjustments, refund_options = {}):
+        # For backwards compatibility
+        if (isinstance(refund_options, six.string_types)):
+            refund_options = { 'refund_method': refund_options }
+        else:
+            if 'refund_method' not in refund_options:
+                refund_options = { 'refund_method': 'credit_first' }
+
+        adjustments_element = self._refund_line_items_xml(adjustments,
+                                                         refund_options)
         return self._create_refund_invoice(adjustments_element)
 
-    def refund_open_amount_xml(self, amount_in_cents, refund_method):
+    def _refund_open_amount_xml(self, amount_in_cents, refund_options):
         elem = ElementTreeBuilder.Element(self.nodename)
-        elem.append(Resource.element_for_value('refund_method', refund_method))
         elem.append(Resource.element_for_value('amount_in_cents',
             amount_in_cents))
+        for k, v in iteritems(refund_options):
+            elem.append(Resource.element_for_value(k, v))
         return elem
 
-    def refund_line_items_xml(self, line_items, refund_method):
+    def _refund_line_items_xml(self, line_items, refund_options):
         elem = ElementTreeBuilder.Element(self.nodename)
-        elem.append(Resource.element_for_value('refund_method', refund_method))
 
         line_items_elem = ElementTreeBuilder.Element('line_items')
 
@@ -844,6 +859,10 @@ class Invoice(Resource):
             line_items_elem.append(adj_elem)
 
         elem.append(line_items_elem)
+
+        for k, v in iteritems(refund_options):
+            elem.append(Resource.element_for_value(k, v))
+
         return elem
 
     def mark_failed(self):
